@@ -29,7 +29,7 @@ def modified_sigmoid(x):
         
         
 class DDSPDecoder(nn.Module):
-    def __init__(self, mlp_depth, n_units, n_harmonics, n_bands, hop_length, sr, reverb_len, data):
+    def __init__(self, mlp_depth, n_units, n_harmonics, n_bands, hop_length, sr, reverb_len, data=None):
         """
         Parameters
         ----------
@@ -65,8 +65,13 @@ class DDSPDecoder(nn.Module):
         self.n_bands = n_bands
         self.hop_length = hop_length
         self.sr = sr
-        self.loudness_mu = data.loudness_mu
-        self.loudness_std = data.loudness_std
+        if data:
+            self.loudness_mu = data.loudness_mu
+            self.loudness_std = data.loudness_std
+        else:
+            print("Warning: No data specified; defaulting to mu=0, std=1 for loudness")
+            self.loudness_mu = 0
+            self.loudness_std = 1
     
     def forward(self, F, FConf, L, respect_nyquist=False):
         """
@@ -116,30 +121,41 @@ class DDSPDecoder(nn.Module):
             total += np.prod(p.shape)
         return total
     
+    def load_from_file(self, path):
+        res = torch.load(path)
+        self.loudness_mu  = res["loudness_mu"]
+        self.loudness_std = res["loudness_std"]
+        del res["loudness_mu"]
+        del res["loudness_std"]
+        self.load_state_dict(res)
+    
     def style_transfer(self, x, device, pitch_shift=0):
-        from synthesis import synthesize
-        from torchcrepe import predict
-        from utils import extract_loudness
-        x = x*0.5/np.max(np.abs(x))
-        pitch = predict(torch.from_numpy(x).view((1, x.size)),self.sr,self.hop_length,50,2000,'full',
-                                batch_size=2048,device=device).flatten()
-        pitch *= 2**(pitch_shift/12)
-        loudness = extract_loudness(x, self.sr, self.hop_length)
-        loudness = (loudness-self.loudness_mu)/self.loudness_std
-        
-        N = len(x)
-        X = torch.from_numpy(x)
-        X = X.view(1, N, 1).to(device)
+        with torch.no_grad():
+            from synthesis import synthesize_additive
+            from pesto import predict
+            from utils import extract_loudness
+            x = x*0.5/np.max(np.abs(x))
+            _, pitch, confidence, _ = predict(torch.from_numpy(x).to(device), self.sr, step_size=1000*self.hop_length/self.sr)
+            if pitch_shift != 0:
+                pitch *= 2**(pitch_shift/12)
+            loudness = extract_loudness(x, self.sr, self.hop_length)
+            loudness = (loudness-self.loudness_mu)/self.loudness_std
+            
+            N = len(x)
+            X = torch.from_numpy(x)
+            X = X.view(1, N, 1).to(device)
 
-        N = min(len(loudness), len(pitch))
-        loudness = loudness[0:N]
-        pitch = pitch[0:N]
-        L = torch.from_numpy(loudness)
-        L = L.view(1, N, 1)
-        L = L.to(device)
-        F = pitch.view(1, N, 1)
-        F = F.to(device)
-
-        A, C, P, reverb = self.forward(F, L)
-        y = synthesize(A, C, F/2, P, self.hop_length, self.sr, reverb)
-        return y.detach().cpu().numpy().flatten()
+            N = min(len(loudness), len(pitch))
+            loudness = loudness[0:N]
+            pitch = pitch[0:N]
+            confidence = confidence[0:N]
+            L = torch.from_numpy(loudness)
+            L = L.view(1, N, 1)
+            L = L.to(device)
+            F = pitch.view(1, N, 1)
+            F = F.to(device)
+            FConf = confidence.view(1, N, 1)
+            FConf = FConf.to(device)
+            A, C, P, reverb = self.forward(F, FConf, L)
+            y = synthesize_additive(A, C, F/2, P, self.hop_length, self.sr, reverb)
+            return y.detach().cpu().numpy().flatten()
