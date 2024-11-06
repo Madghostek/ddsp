@@ -144,7 +144,7 @@ def power_to_db(power, ref_db=0.0, range_db=80.0, use_tf=True):
     db = np.maximum(db, -range_db)
     return db
 
-def extract_loudness(x, sr, hop_length, n_fft=512):
+def extract_loudness(x, sr, hop_length, n_fft=2048):
     """
     Extract the loudness in dB by using an A-weighting of the power spectrum
     (section B.1 of the paper)

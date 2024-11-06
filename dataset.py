@@ -30,11 +30,13 @@ def walk_dir(dir:str, ext="wav"):
     return files
 
 class InstrumentDataset(Dataset):
-    def __init__(self, folder, ext, sr, hop_length, 
+    def __init__(self, device, folder, ext, sr, hop_length, 
                  sample_len=3, samples_per_epoch=5000):
         """
         Parameters
         ----------
+        device: string
+            Device name
         folder: string
             Path to folder
         ext: string
@@ -67,8 +69,10 @@ class InstrumentDataset(Dataset):
             loudness = extract_loudness(x, sr, hop_length)
             
             ## Step 2: Compute pitch
-            _, pitch, confidence, _ = pesto.predict(torch.from_numpy(x), sr, step_size=1000*hop_length/sr)
-            
+            _, pitch, confidence, _ = pesto.predict(torch.from_numpy(x).to(device), sr, step_size=1000*hop_length/sr)
+            pitch = pitch.cpu()
+            confidence = confidence.cpu()
+
             ## Step 3: Crop all aspects to be the same
             N = min(loudness.size, pitch.shape[0])
             if N >= self.timesteps:

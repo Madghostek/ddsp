@@ -17,7 +17,7 @@ def do_training(opt):
     if not os.path.exists(opt.output_path):
         os.mkdir(opt.output_path)
     
-    data = InstrumentDataset(opt.dataset_path, opt.ext, opt.sr, opt.hop_length)
+    data = InstrumentDataset(opt.device, opt.dataset_path, opt.ext, opt.sr, opt.hop_length)
 
     ## Step 2: Create model with a test batch
     model = DDSPDecoder(mlp_depth=3, n_units=512, n_harmonics=50, n_bands=65, sr=opt.sr, reverb_len=opt.reverb_len, data=data, hop_length=opt.hop_length)
