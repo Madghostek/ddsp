@@ -52,7 +52,7 @@ class DDSPDecoder(nn.Module):
             and loudness_std for style transfer
         """
         super(DDSPDecoder, self).__init__()
-        self.FMLP = MLP(mlp_depth, 1, n_units)
+        self.FMLP = MLP(mlp_depth, 2, n_units)
         self.LMLP = MLP(mlp_depth, 1, n_units)
         
         self.gru = nn.GRU(input_size=n_units*2, hidden_size=n_units, num_layers=1, bias=True, batch_first=True)
@@ -68,8 +68,32 @@ class DDSPDecoder(nn.Module):
         self.loudness_mu = data.loudness_mu
         self.loudness_std = data.loudness_std
     
-    def forward(self, F, L, respect_nyquist=False):
-        FOut = self.FMLP(F)
+    def forward(self, F, FConf, L, respect_nyquist=False):
+        """
+        Estimate the additive and subtractive synthesis parameters
+        from pitch and loudness trajectories
+
+        Parameters
+        ----------
+        F: torch.tensor(n_batches, n_times, 1)
+            Frequencies
+        FConf: torch.tensor(n_batches, n_times, 1)
+            Confidences of frequencies
+        L: torch.tensor(n_batches, n_times, 1)
+            Loudnesses
+        
+        Returns
+        -------
+        A: torch.tensor(n_batches, n_times, 1)
+            Amplitudes
+        C: torch.tensor(n_batches, n_times, n_harmonics)
+            Harmonic relative amplitudes
+        S: torch.tensor(n_batches, n_times, n_bands)
+            Subtractive synthesis parameters
+        reverb: torch.tensor(n_reverb)
+            Estimated impulse response
+        """
+        FOut = self.FMLP(torch.cat((F, FConf), dim=-1))
         LOut = self.LMLP(L)
         FL = torch.concatenate((FOut, LOut), axis=2)
         G = self.gru(FL)[0]
@@ -115,7 +139,7 @@ class DDSPDecoder(nn.Module):
         L = L.to(device)
         F = pitch.view(1, N, 1)
         F = F.to(device)
-        
+
         A, C, P, reverb = self.forward(F, L)
         y = synthesize(A, C, F/2, P, self.hop_length, self.sr, reverb)
         return y.detach().cpu().numpy().flatten()

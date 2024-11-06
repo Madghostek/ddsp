@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import os
 import tqdm
+import pesto
 from torch.utils.data import Dataset
 
 
@@ -29,14 +30,11 @@ def walk_dir(dir:str, ext="wav"):
     return files
 
 class InstrumentDataset(Dataset):
-    def __init__(self, device, folder, ext, sr, hop_length, 
-                 sample_len=3, samples_per_epoch=5000, 
-                 pitch_upsample_fac=1, pitch_model="full"):
+    def __init__(self, folder, ext, sr, hop_length, 
+                 sample_len=3, samples_per_epoch=5000):
         """
         Parameters
         ----------
-        device: string
-            Device name
         folder: string
             Path to folder
         ext: string
@@ -49,12 +47,7 @@ class InstrumentDataset(Dataset):
             Length, in seconds, of each sample
         samples_per_epoch: int
             What to consider the length of this data
-        pitch_upsample_fac: int
-            Amount by which to upsample pitch when using torchcrepe
-        pitch_model: string
-            Which torchcrepe model to use
         """
-        from torchcrepe import predict
         from utils import extract_loudness
         import librosa
         self.timesteps = int(sample_len*sr/hop_length)
@@ -63,18 +56,18 @@ class InstrumentDataset(Dataset):
 
         self.loudnesses = []
         self.pitches = []
+        self.confidences = []
         self.xs = []
         files = walk_dir(folder, ext)
         for audio_filename in tqdm.tqdm(files):
             x, self.sr = librosa.load(audio_filename, sr=sr)
+            x = x/np.max(np.abs(x))
             
             ## Step 1: Compute loudness
             loudness = extract_loudness(x, sr, hop_length)
             
             ## Step 2: Compute pitch
-            pitch = predict(torch.from_numpy(x).view((1, x.size)),sr,hop_length//pitch_upsample_fac,
-                                    50,2000,pitch_model,batch_size=2048,device=device).flatten()
-            pitch = pitch[0::pitch_upsample_fac]
+            _, pitch, confidence, _ = pesto.predict(torch.from_numpy(x), sr, step_size=1000*hop_length/sr)
             
             ## Step 3: Crop all aspects to be the same
             N = min(loudness.size, pitch.shape[0])
@@ -82,6 +75,7 @@ class InstrumentDataset(Dataset):
                 # Only add if the clip is long enough
                 self.loudnesses.append(loudness[0:N])
                 self.pitches.append(pitch[0:N])
+                self.confidences.append(confidence[0:N])
                 self.xs.append(x[0:N*hop_length])
             else:
                 tqdm.tqdm.write(f"Skipping {audio_filename}: too short at {N*hop_length/sr} seconds")
@@ -105,6 +99,7 @@ class InstrumentDataset(Dataset):
         idx = np.random.randint(len(self.loudnesses))
         x = self.xs[idx]
         pitch = self.pitches[idx]
+        confidence = self.confidences[idx]
         loudness = self.loudnesses[idx]
 
         # Next extract random index into latent variables
@@ -114,6 +109,7 @@ class InstrumentDataset(Dataset):
         x = torch.from_numpy(x).view(x.size, 1)
         # Extract pitch and loudness
         pitch = pitch[idx:idx+self.timesteps].view(self.timesteps, 1)
+        confidence = confidence[idx:idx+self.timesteps].view(self.timesteps, 1)
         loudness = torch.from_numpy(loudness[idx:idx+self.timesteps]).view(self.timesteps, 1)
-        return x, pitch, loudness
+        return x, pitch, confidence, loudness
         

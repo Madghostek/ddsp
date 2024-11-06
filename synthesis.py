@@ -46,6 +46,22 @@ def synthesize_subtractive(S, hop_length):
 
 
 def synthesize_additive(A, C, F, S, hop_length, sr, reverb=torch.tensor([])):
+    """
+    Perform additive synthesis on a batch of parameters
+    Parameters
+    ----------
+    A: torch.tensor(n_batches, n_times, 1)
+        Amplitudes
+    C: torch.tensor(n_batches, n_times, n_harmonics)
+        Harmonic relative amplitudes
+    F: torch.tensor(n_batches, n_times, 1)
+        Frequencies
+    S: torch.tensor(n_batches, n_times, n_bands)
+        Subtractive synthesis parameters
+    hop_length: int
+        Hop length
+    
+    """
     from utils import upsample_time
     from utils import fftconvolve
     AUp = upsample_time(A, hop_length)
@@ -55,12 +71,10 @@ def synthesize_additive(A, C, F, S, hop_length, sr, reverb=torch.tensor([])):
     harmonics = torch.arange(1, C.shape[-1]+1).to(CUp.device)
     harmonics = harmonics.view(1, 1, C.shape[-1])
     FUp = FUp*harmonics
-    N = AUp.shape[1]
     Y = AUp*CUp*torch.sin(2*np.pi*FUp)
     Y = torch.sum(Y, axis=-1, keepdims=True)
     YS = synthesize_subtractive(S, hop_length)
     Y = Y + YS
-    N = Y.shape[1]
     NR = reverb.detach().cpu().numpy().size
     if NR > 0:
         Y = fftconvolve(Y.squeeze(), reverb.view(1, NR)).unsqueeze(-1)
