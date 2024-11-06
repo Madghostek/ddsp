@@ -13,20 +13,7 @@ from utils import mss_loss, plot_stft_comparison
 from synthesis import synthesize_additive
 import tqdm
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset_path', type=str, required=True, help="Path to dataset")
-    parser.add_argument('--output_path', type=str, required=True, help="Path to which to output model")
-    parser.add_argument('--device', type=str, default="cuda", help="Torch device to use")
-    parser.add_argument('--ext', type=str, default="wav", help="File extention to look for in dataset")
-    parser.add_argument('--sr', type=int, default=44100, help="Audio sample rate")
-    parser.add_argument('--hop_length', type=int, default=441, help="Hop length to use for pitch/loudness")
-    parser.add_argument('--batch_size', type=int, default=16, help="Batch size for training")
-    parser.add_argument('--num_epochs', type=int, default=100, help="Batch size for training")
-    parser.add_argument('--samples_per_epoch', type=int, default=5000, help="How many random samples to take in the dataset for each epoch")
-    parser.add_argument('--reverb_len', type=int, default=44100, help="Length of impulse response to model")
-    opt = parser.parse_args()
-
+def do_training(opt):
     if not os.path.exists(opt.output_path):
         os.mkdir(opt.output_path)
     
@@ -92,3 +79,18 @@ if __name__ == '__main__':
         torch.save(state, f"{opt.output_path}/model.pkl")
         
         print("Epoch {}, loss {:.3f}, elapsed time {:.3f}".format(epoch, train_loss, time.time()-tic))
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--dataset_path', type=str, required=True, help="Path to dataset")
+    parser.add_argument('--output_path', type=str, required=True, help="Path to which to output model")
+    parser.add_argument('--device', type=str, default="cuda", help="Torch device to use")
+    parser.add_argument('--ext', type=str, default="wav", help="File extention to look for in dataset")
+    parser.add_argument('--sr', type=int, default=44100, help="Audio sample rate")
+    parser.add_argument('--hop_length', type=int, default=441, help="Hop length to use for pitch/loudness")
+    parser.add_argument('--batch_size', type=int, default=16, help="Batch size for training")
+    parser.add_argument('--num_epochs', type=int, default=100, help="Batch size for training")
+    parser.add_argument('--samples_per_epoch', type=int, default=5000, help="How many random samples to take in the dataset for each epoch")
+    parser.add_argument('--reverb_len', type=int, default=44100, help="Length of impulse response to model")
+    opt = parser.parse_args()
+    do_training(opt)
