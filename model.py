@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 from torch import nn
+import time
 
 class MLP(nn.Module):
     def __init__(self, depth=3, n_input=1, n_units=512):
@@ -129,18 +130,29 @@ class DDSPDecoder(nn.Module):
         del res["loudness_std"]
         self.load_state_dict(res)
     
-    def style_transfer(self, x, device, pitch_shift=0):
+    def style_transfer(self, x, device, pitch_device="", pitch_shift=0):
+        if len(pitch_device) == 0:
+            pitch_device = device
         with torch.no_grad():
             from synthesis import synthesize_additive
             from pesto import predict
             from utils import extract_loudness
             x = x*0.5/np.max(np.abs(x))
-            _, pitch, confidence, _ = predict(torch.from_numpy(x).to(device), self.sr, step_size=1000*self.hop_length/self.sr)
+            tic = time.time()
+            try:
+                _, pitch, confidence, _ = predict(torch.from_numpy(x).to(pitch_device), self.sr, step_size=1000*self.hop_length/self.sr)
+            except:
+                print("Ran out of GPU memory, trying CPU for pitch")
+                _, pitch, confidence, _ = predict(torch.from_numpy(x).to("cpu"), self.sr, step_size=1000*self.hop_length/self.sr)
+            pitch = pitch.to(device)
+            confidence = confidence.to(device)
             if pitch_shift != 0:
                 pitch *= 2**(pitch_shift/12)
+            print("Elapsed time pitch:", time.time()-tic)
             loudness = extract_loudness(x, self.sr, self.hop_length)
             loudness = (loudness-self.loudness_mu)/self.loudness_std
             
+            tic = time.time()
             N = len(x)
             X = torch.from_numpy(x)
             X = X.view(1, N, 1).to(device)
@@ -158,4 +170,6 @@ class DDSPDecoder(nn.Module):
             FConf = FConf.to(device)
             A, C, P, reverb = self.forward(F, FConf, L)
             y = synthesize_additive(A, C, F/2, P, self.hop_length, self.sr, reverb)
+
+            print("Elapsed time synth:", time.time()-tic)
             return y.detach().cpu().numpy().flatten()
