@@ -64,17 +64,23 @@ class InstrumentDataset(Dataset):
         for audio_filename in tqdm.tqdm(files):
             x, self.sr = librosa.load(audio_filename, sr=sr)
             x = x/np.max(np.abs(x))
+            if x.size < self.timesteps:
+                continue
             
             ## Step 1: Compute loudness
             loudness = extract_loudness(x, sr, hop_length)
             
             ## Step 2: Compute pitch
-            _, pitch, confidence, _ = pesto.predict(torch.from_numpy(x).to(device), sr, step_size=1000*hop_length/sr)
-            pitch = pitch.cpu()
-            confidence = confidence.cpu()
+            try:
+                _, pitch, confidence, _ = pesto.predict(torch.from_numpy(x).to("cuda"), sr, step_size=1000*hop_length/sr)
+                pitch = pitch.cpu()
+                confidence = confidence.cpu()
+            except:
+                print("GPU memory full, trying CPU...")
+                _, pitch, confidence, _ = pesto.predict(torch.from_numpy(x), sr, step_size=1000*hop_length/sr)
 
             ## Step 3: Crop all aspects to be the same
-            N = min(loudness.size, pitch.shape[0])
+            N = min(x.size, loudness.size, pitch.shape[0])
             if N >= self.timesteps:
                 # Only add if the clip is long enough
                 self.loudnesses.append(loudness[0:N])
@@ -90,6 +96,8 @@ class InstrumentDataset(Dataset):
         self.loudness_std = np.std(all_loudnesses)
         for i, loudness in enumerate(self.loudnesses):
             self.loudnesses[i] = (loudness-self.loudness_mu)/self.loudness_std
+
+
         
     
     def __len__(self):
