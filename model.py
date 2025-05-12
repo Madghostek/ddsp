@@ -123,7 +123,7 @@ class DDSPDecoder(nn.Module):
         return total
     
     def load_from_file(self, path):
-        res = torch.load(path)
+        res = torch.load(path, weights_only=False)
         self.loudness_mu  = res["loudness_mu"]
         self.loudness_std = res["loudness_std"]
         del res["loudness_mu"]

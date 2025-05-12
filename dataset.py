@@ -31,7 +31,7 @@ def walk_dir(dir:str, ext="wav"):
 
 class InstrumentDataset(Dataset):
     def __init__(self, device, folder, ext, sr, hop_length, 
-                 sample_len=3, samples_per_epoch=5000):
+                 sample_len=3, samples_per_epoch=5000, dataset_size=None):
         """
         Parameters
         ----------
@@ -60,7 +60,12 @@ class InstrumentDataset(Dataset):
         self.pitches = []
         self.confidences = []
         self.xs = []
-        files = walk_dir(folder, ext)
+        # finetuning change ---
+        if dataset_size:
+            files = walk_dir(folder, ext)[:dataset_size]
+        else:
+            files = walk_dir(folder, ext)
+        # ---
         for audio_filename in tqdm.tqdm(files):
             x, self.sr = librosa.load(audio_filename, sr=sr)
             x = x/np.max(np.abs(x))
