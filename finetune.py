@@ -12,12 +12,15 @@ from model import DDSPDecoder
 from utils import mss_loss, plot_stft_comparison
 from synthesis import synthesize_additive
 import tqdm
+from pathlib import Path
 
 def do_training(opt):
     if not os.path.exists(opt.output_path):
-        os.mkdir(opt.output_path)
+        os.makedirs(opt.output_path, exist_ok=True)
     
     data = InstrumentDataset(opt.device, opt.dataset_path, opt.ext, opt.sr, opt.hop_length, dataset_size=opt.dataset_size)
+
+    print("dataset size:",len(data.xs))
 
     ## Step 2: Create model with a test batch
     model = DDSPDecoder(mlp_depth=3, n_units=512, n_harmonics=50, n_bands=65, sr=opt.sr, reverb_len=opt.reverb_len, data=data, hop_length=opt.hop_length)
@@ -37,6 +40,7 @@ def do_training(opt):
         loader = DataLoader(data, batch_size=opt.batch_size, shuffle=True)
         
         train_loss = 0
+        print("loader enum")
         for batch_num, (X, F, FConf, L) in tqdm.tqdm(enumerate(loader)): # Go through each mini batch
             # Move inputs/outputs to GPU
             X = X.to(opt.device)
@@ -48,7 +52,7 @@ def do_training(opt):
             # Run the model on all inputs
             A, C, P, reverb = model(F, FConf, L)
             # Run the synthesizer
-            Y = synthesize_additive(A, C, F, P, opt.hop_length, opt.sr, reverb)
+            Y = synthesize_additive(A, C, F, P, opt.hop_length, opt.sr, reverb, use_reverb=opt.impulse)
             # Compute the loss function comparing X to Y
             loss = mss_loss(X, Y)
             # Compute the gradients of the loss function with respect
@@ -76,7 +80,7 @@ def do_training(opt):
         state = model.state_dict()
         state["loudness_mu"] = model.loudness_mu
         state["loudness_std"] = model.loudness_std
-        torch.save(state, f"{opt.output_path}/model.pkl")
+        torch.save(state, f"{opt.output_path}/{epoch+1}.pkl")
         
         print("Epoch {}, loss {:.3f}, elapsed time {:.3f}".format(epoch, train_loss, time.time()-tic))
 
@@ -96,5 +100,11 @@ if __name__ == '__main__':
     # finetune args
     parser.add_argument('--initial_model', type=str, required=True, help="Path to initial model")
     parser.add_argument('--dataset_size', type=int, required=False, help="Subset of the dataset to consider")
+    parser.add_argument('--impulse', type=bool, default=True, action=argparse.BooleanOptionalAction, help="Allows training ddsp without impulse response which is responsible for echo")
     opt = parser.parse_args()
+    if opt.impulse:
+        print("Training with impulse (standard)")
+    else:
+        print("Training without impulse")    
     do_training(opt)
+

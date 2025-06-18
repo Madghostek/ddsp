@@ -45,7 +45,7 @@ def synthesize_subtractive(S, hop_length):
     return noise.reshape(noise.shape[0], noise.shape[1]*noise.shape[2], 1)
 
 
-def synthesize_additive(A, C, F, S, hop_length, sr, reverb=torch.tensor([])):
+def synthesize_additive(A, C, F, S, hop_length, sr, reverb=torch.tensor([]), use_reverb=True):
     """
     Perform additive synthesis on a batch of parameters
     Parameters
@@ -76,6 +76,6 @@ def synthesize_additive(A, C, F, S, hop_length, sr, reverb=torch.tensor([])):
     YS = synthesize_subtractive(S, hop_length)
     Y = Y + YS
     NR = reverb.detach().cpu().numpy().size
-    if NR > 0:
+    if NR > 0 and use_reverb:
         Y = fftconvolve(Y.squeeze(), reverb.view(1, NR)).unsqueeze(-1)
     return Y
